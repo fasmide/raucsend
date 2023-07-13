@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/schollz/progressbar/v3"
+	"github.com/xyproto/sheepcounter"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -24,7 +26,7 @@ type Uploader struct {
 
 // Run will initiate the webserver and setup forward ssh tunnel to target
 func (u *Uploader) Run() error {
-	err := u.checkImages()
+	imageSizes, err := u.imageSizes()
 	if err != nil {
 		return fmt.Errorf("error checking images: %w", err)
 	}
@@ -44,11 +46,7 @@ func (u *Uploader) Run() error {
 
 	u.location = listener.Addr().String()
 
-	// TODO: dont use a fileserver, but a custom handler that will serve the images
-	// and nothing more - maybe even output a progressbar as we will know
-	// how far along the transmit is.
-	// but this is quick and dirty
-	go http.Serve(listener, http.FileServer(http.Dir(".")))
+	go http.Serve(listener, WithProgressbar(imageSizes, http.FileServer(http.Dir("."))))
 
 	log.Printf("fileserver listening on remote: %s", u.location)
 
@@ -107,6 +105,8 @@ func SpecialOutput(tag string) io.Writer {
 	go func() {
 		scanner := bufio.NewScanner(reader)
 		for scanner.Scan() {
+			// remove the progressbar and write
+			fmt.Fprint(os.Stdout, "\033[2K\r")
 			log.Printf("[%s] %s", tag, scanner.Text())
 		}
 		if err := scanner.Err(); err != nil {
@@ -117,12 +117,38 @@ func SpecialOutput(tag string) io.Writer {
 	return writer
 }
 
-func (u *Uploader) checkImages() error {
-	for _, v := range u.Images {
-		_, err := os.Stat(v)
-		if err != nil {
-			return err
+func WithProgressbar(sizes map[string]int64, h http.Handler) http.Handler {
+	var bar *progressbar.ProgressBar
+	uri := ""
+
+	logFn := func(rw http.ResponseWriter, r *http.Request) {
+		// if uri changes, invent a new progressbar
+		if uri != r.RequestURI {
+			uri = r.RequestURI
+			bar = progressbar.NewOptions(int(sizes[uri[1:]]),
+				progressbar.OptionShowBytes(true),
+				progressbar.OptionShowCount(),
+				progressbar.OptionSetDescription(uri),
+			)
 		}
+
+		sc := sheepcounter.New(rw)
+
+		h.ServeHTTP(sc, r)
+
+		bar.Add64(sc.Counter())
 	}
-	return nil
+	return http.HandlerFunc(logFn)
+}
+
+func (u *Uploader) imageSizes() (map[string]int64, error) {
+	imageSizes := make(map[string]int64)
+	for _, v := range u.Images {
+		info, err := os.Stat(v)
+		if err != nil {
+			return nil, err
+		}
+		imageSizes[v] = info.Size()
+	}
+	return imageSizes, nil
 }
