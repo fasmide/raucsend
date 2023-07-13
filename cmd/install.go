@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"net"
 	"os"
 
 	"github.com/fasmide/raucsend/install"
@@ -23,8 +24,15 @@ var installCmd = &cobra.Command{
 		}
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {
+		host, port, err := net.SplitHostPort(args[0])
+		if err != nil {
+			// default to args[0] - whatever that may be
+			host = args[0]
+			port = "22" // port 22
+		}
+
 		job := install.Uploader{
-			Target: args[0],
+			Target: net.JoinHostPort(host, port),
 			Images: args[1:],
 			SSHConfig: &ssh.ClientConfig{
 				User: user,
