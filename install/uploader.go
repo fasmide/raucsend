@@ -59,6 +59,21 @@ func (u *Uploader) Run() error {
 		}
 		defer session.Close()
 
+		session.Stdout = SpecialOutput("\x1b[36m-->\033[0m")
+		session.Stderr = SpecialOutput("\x1b[31mERR\033[0m")
+
+		cmd := fmt.Sprintf("rauc install http://%s/%s", u.location, v)
+
+		log.Printf("[\x1b[32m<--\033[0m] %s", cmd)
+
+		err = session.Run(cmd)
+		if err != nil {
+			return fmt.Errorf("unable to run remote command: %w", err)
+		}
+
+		session.Close()
+	}
+
 	if u.Reboot {
 		session, err := u.sshConn.NewSession()
 		if err != nil {
