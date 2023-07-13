@@ -11,6 +11,7 @@ import (
 
 var user string
 var pass string
+var reboot bool
 
 // installCmd represents the install command
 var installCmd = &cobra.Command{
@@ -41,6 +42,7 @@ var installCmd = &cobra.Command{
 				},
 				HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 			},
+			Reboot: reboot,
 		}
 		return job.Run()
 	},
@@ -50,4 +52,5 @@ func init() {
 	rootCmd.AddCommand(installCmd)
 	installCmd.Flags().StringVarP(&user, "user", "l", "root", "ssh user")
 	installCmd.Flags().StringVarP(&pass, "pass", "p", "root", "ssh password")
+	installCmd.Flags().BoolVarP(&reboot, "reboot", "r", false, "reboot device on success")
 }

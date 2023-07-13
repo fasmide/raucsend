@@ -16,6 +16,8 @@ type Uploader struct {
 	SSHConfig *ssh.ClientConfig
 	Images    []string
 
+	Reboot bool
+
 	location string
 	sshConn  *ssh.Client
 }
@@ -57,10 +59,24 @@ func (u *Uploader) Run() error {
 		}
 		defer session.Close()
 
-		session.Stdout = SpecialOutput("OUT")
-		session.Stderr = SpecialOutput("ERR")
-		// Finally, run the command
-		err = session.Run("rauc install http://" + u.location + "/" + v)
+	if u.Reboot {
+		session, err := u.sshConn.NewSession()
+		if err != nil {
+			return fmt.Errorf("unable to open session: %w", err)
+		}
+		defer session.Close()
+
+		session.Stdout = SpecialOutput("\x1b[36m-->\033[0m")
+		session.Stderr = SpecialOutput("\x1b[31mERR\033[0m")
+
+		log.Printf("[\x1b[32m<--\033[0m] %s", "reboot")
+
+		err = session.Run("reboot")
+		_, ok := err.(*ssh.ExitMissingError)
+		if ok {
+			log.Printf("connection lost, device rebooting...")
+			return nil
+		}
 		if err != nil {
 			return fmt.Errorf("unable to run remote command: %w", err)
 		}
